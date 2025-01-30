@@ -139,17 +139,17 @@
                 const reservationResponse = JSON.parse(message.body);
 
                 let messageObj = JSON.parse(message.body);
-                let message = "";   // 예약 state에 따른 메세지
+                let statusMessage = "";   // 예약 state에 따른 메세지
 
                 switch (messageObj.reservationStatus) {
                     case 1:
-                        message = "예약이 승인되었습니다.";
+                        statusMessage = "예약이 승인되었습니다.";
                         break;
                     case 2:
-                        message = "예약이 거부되었습니다.";
+                        statusMessage = "예약이 거부되었습니다.";
                         break;
                     case 3:
-                        message = "예약이 취소되었습니다.";
+                        statusMessage = "예약이 취소되었습니다.";
                         break;
                 }
 
@@ -157,7 +157,7 @@
                 const li = `
                     <li>
                         <p>예약 알림이 도착했습니다.</p>
-                        <p>예약 상태: ${message}</p>
+                        <p>예약 상태: ${statusMessage}</p>
                     </li>
                 `;
 
