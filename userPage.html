@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- SockJS 먼저 로드 -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.5.2/dist/sockjs.min.js"></script>
+    <!-- 그 후에 Stomp 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.2/stomp.min.js"></script>
+    <title>사용자 페이지</title>
+</head>
+
+<body>
+    <div>
+        <h1>사용자</h1>
+        <label for="userId">사용자 아이디: </label>
+        <input type="text" id="userId" />
+    </div>
+    <div>
+        <h1>예약 요청</h1>
+        <label for="orderId">식당PK: </label><input type="number" id="restaurantId">
+        <label for="reservationPeopleCount">예약 인원: </label><input type="number" id="reservationPeopleCount">
+        <label for="userPhone">사용자 전화번호: </label><input type="text" id="userPhone">
+        <label for="reservationTime">예약시간: </label><input type="datetime-local" id="reservationTime">
+        <button id="submitBtn">예약 요청</button>
+    </div>
+    <div>
+        <h2>예약 상태 리스트</h2>
+        <ul id="reservList">
+
+        </ul>
+    </div>
+
+    <script type="module">
+        import { connect, stompClient } from './common.js';
+
+        let orderYn = false; // 주문 등록 여부(실패시 예약생성을 보내지 않기 위함)
+        let createdOrderId = null;  // 생성된 주문 아이디(예약 생성에 사용하기 위함)
+
+        document.getElementById('submitBtn').addEventListener('click', function () {
+            // 각 입력 값 가져오기
+            const userId = document.getElementById('userId').value;
+            const restaurantId = document.getElementById('restaurantId').value;
+            const reservationPeopleCount = document.getElementById('reservationPeopleCount').value;
+            const userPhone = document.getElementById('userPhone').value;
+            const reservationTime = document.getElementById('reservationTime').value;
+
+            // 입력 값들이 모두 있는지 확인
+            if (!userId || !restaurantId || !reservationPeopleCount || !userPhone || !reservationTime) {
+                alert("모든 항목을 입력해주세요!");
+                return;
+            }
+
+            // 주문 정보 생성(주문이 먼저 생성된 후 해당 주문에 대한 예약을 생성하기 때문에 주문을 먼저 진행)
+            const orderPostReq = {
+                userId: userId,
+                restaurantId: restaurantId,
+                reservationStatus: 0
+            }
+
+            // XMLHttpRequest 객체 생성 (서버와 비동기 통신을 수행할 수 있는 내장 객체)
+            const xhr = new XMLHttpRequest();
+
+            // Ajax 경로 설정
+            xhr.open("POST", "http://localhost:8080/api/order", false);
+
+            // contentType 지정
+            xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+            // XMLHttpRequest 콜백 함수 지정(실패 시)
+            xhr.onerror = function () {
+                alert("네트워크 오류가 발생했습니다.");
+            };
+
+            // XMLHttpRequest 콜백 함수 지정(성공 시)
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    // 응답 객체로 파싱
+                    let resultObj = JSON.parse(xhr.responseText);
+
+                    if (resultObj.statusCode == "200") {
+                        orderYn = true;
+                        createdOrderId = resultObj.resultData;
+                    } else {
+                        orderYn = false;
+                        createdOrderId = null;
+                    }
+                } else {
+                    alert("예약에 실패했습니다. 다시 시도해주세요.");
+                    console.error("에러:", xhr.status, xhr.statusText);
+                }
+            };
+
+            // JSON 데이터 전송
+            xhr.send(JSON.stringify(orderPostReq));
+
+            // 주문이 성공적으로 생성 되었다면
+            if (orderYn) {
+                // 예약요청 정보 생성
+                const ReservationPostReq = {
+                    orderId: createdOrderId,
+                    reservationPeopleCount: reservationPeopleCount,
+                    userPhone: userPhone,
+                    reservationTime: reservationTime,
+                    restaurantId: restaurantId
+                };
+
+                // Ajax 경로 설정
+                xhr.open("POST", "http://localhost:8080/api/reservation", false);
+
+                // contentType 지정
+                xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+                // XMLHttpRequest 콜백 함수 지정(성공 시)
+                xhr.onload = function () {
+                    if (xhr.status === 200) {
+                        // 응답 객체로 파싱
+                        let resultObj = JSON.parse(xhr.responseText);
+
+                        // 예약까지 완료 되었으면 웹소켓 연결
+                        connect(subscribeToReservationStatus);
+                    } else {
+                        alert("예약에 실패했습니다. 다시 시도해주세요.");
+                        console.error("에러:", xhr.status, xhr.statusText);
+                    }
+                };
+
+                // JSON 데이터 전송
+                xhr.send(JSON.stringify(ReservationPostReq));
+            }
+        });
+
+        // 예약 상태를 구독하는 함수
+        function subscribeToReservationStatus() {
+            let url = `/queue/reservation/${createdOrderId}/user/reservation`;
+
+            stompClient.subscribe(url, function (message) {
+                const reservationResponse = JSON.parse(message.body);
+
+                let messageObj = JSON.parse(message.body);
+                let message = "";   // 예약 state에 따른 메세지
+
+                switch (messageObj.reservationStatus) {
+                    case 1:
+                        message = "예약이 승인되었습니다.";
+                        break;
+                    case 2:
+                        message = "예약이 거부되었습니다.";
+                        break;
+                    case 3:
+                        message = "예약이 취소되었습니다.";
+                        break;
+                }
+
+                const ul = document.getElementById('reservList');
+                const li = `
+                    <li>
+                        <p>예약 알림이 도착했습니다.</p>
+                        <p>예약 상태: ${message}</p>
+                    </li>
+                `;
+
+                ul.innerHTML += li;
+            });
+        }
+    </script>
+</body>
+
+</html>

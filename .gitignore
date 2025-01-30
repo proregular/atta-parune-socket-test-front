@@ -1,0 +1,6 @@
+# node_modules 폴더 무시
+node_modules/
+
+# npm/yarn lock 파일 무시 (원하는 경우 추가)
+package-lock.json
+yarn.lock
