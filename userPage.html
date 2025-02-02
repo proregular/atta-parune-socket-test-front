@@ -103,7 +103,8 @@
                     reservationPeopleCount: reservationPeopleCount,
                     userPhone: userPhone,
                     reservationTime: reservationTime,
-                    restaurantId: restaurantId
+                    restaurantId: restaurantId,
+                    userId: userId
                 };
 
                 // Ajax 경로 설정
@@ -122,6 +123,7 @@
                         connect(subscribeToReservationStatus);
                     } else {
                         alert("예약에 실패했습니다. 다시 시도해주세요.");
+                        console.log(xhr.responseText);
                         console.error("에러:", xhr.status, xhr.statusText);
                     }
                 };
@@ -136,6 +138,7 @@
             let url = `/queue/reservation/${createdOrderId}/user/reservation`;
 
             stompClient.subscribe(url, function (message) {
+                console.log(message);
                 const reservationResponse = JSON.parse(message.body);
 
                 let messageObj = JSON.parse(message.body);
@@ -151,6 +154,12 @@
                     case 3:
                         statusMessage = "예약이 취소되었습니다.";
                         break;
+                }
+
+                if (messageObj.reservationStatus != 1) {
+                    stompClient.disconnect(function () {
+                        console.log("Disconnected from WebSocket server");
+                    });
                 }
 
                 const ul = document.getElementById('reservList');
